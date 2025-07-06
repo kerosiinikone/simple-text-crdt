@@ -13,8 +13,8 @@ While learning Rust.
 
 ### Resources:
 
+- **Main Reference** https://inria.hal.science/inria-00445975/document
 - https://arxiv.org/pdf/1805.06358
-- https://inria.hal.science/inria-00445975/document (collab editing)
 - https://mattweidner.com/2023/09/26/crdt-survey-1.html
 - https://mattweidner.com/2023/09/26/crdt-survey-2.html
 - https://mattweidner.com/2023/09/26/crdt-survey-3.html

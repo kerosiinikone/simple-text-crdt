@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use crate::node::SDIS;
 
 // Keeping track of the SDIS on each "turn" also helps determining which mininode
@@ -11,30 +13,37 @@ use crate::node::SDIS;
     the corresponding major node.
 */
 
-#[derive(Debug, PartialEq, PartialOrd)]
-struct PathComponent(usize, Option<SDIS>);
+#[derive(Debug, PartialEq, Clone)]
+pub struct PathComponent(pub usize, pub Option<SDIS>);
 
-#[derive(Debug)]
-pub struct PosID(Vec<PathComponent>);
+#[derive(Debug, Clone)]
+pub struct PosID(pub Vec<PathComponent>);
+
+impl PartialOrd for PathComponent {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        match (self, other) {
+            (PathComponent(a, None), PathComponent(b, None)) => a.partial_cmp(b),
+            (PathComponent(a, Some(dis_a)), PathComponent(b, Some(dis_b))) => a
+                .partial_cmp(b)
+                .filter(|o| o.is_ne())
+                .or_else(|| dis_a.partial_cmp(dis_b)),
+            (PathComponent(0, None), PathComponent(_, Some(_))) => Some(Ordering::Less),
+            (PathComponent(_, Some(_)), PathComponent(0, None)) => Some(Ordering::Greater),
+            (PathComponent(_, Some(_)), PathComponent(1, None)) => Some(Ordering::Less),
+            (PathComponent(1, None), PathComponent(_, Some(_))) => Some(Ordering::Greater),
+            (PathComponent(a, _), PathComponent(b, _)) => a.partial_cmp(b), // Def
+        }
+    }
+}
 
 impl PartialOrd for PosID {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        unimplemented!()
+        self.0.partial_cmp(&other.0)
     }
 }
 
 impl PartialEq for PosID {
     fn eq(&self, other: &Self) -> bool {
-        for (idx, turn) in self.0.iter().enumerate() {
-            let pos_id_oth = &other.0[idx];
-            if turn.1 != pos_id_oth.1 || turn.0 != pos_id_oth.0 {
-                return false;
-            }
-        }
-        true
+        self.0 == other.0
     }
-}
-
-fn newPosID(prev: PosID, next: PosID) -> PosID {
-    unimplemented!()
 }

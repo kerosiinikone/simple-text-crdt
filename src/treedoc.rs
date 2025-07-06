@@ -1,17 +1,21 @@
 use std::io::Result;
 
 use crate::{
-    node::{self, Mininode, Node},
-    pos_id::PosID,
+    node::{self, Mininode, Node, SDIS},
+    pos_id::{PathComponent, PosID},
 };
+
+enum AtPosID {
+    Node(Option<Box<Node>>),
+    Mininode(Option<Box<Mininode>>),
+}
 
 // This is the document that is copied to all the peers
 // -> aka the document state / atom buffer
-
-/// Essentially a binary tree (BT)
 #[derive(Debug)]
 pub struct Treedoc {
     root: Option<Box<Node>>,
+    unique_disambiguator: SDIS,
 }
 
 impl Treedoc {
@@ -38,8 +42,47 @@ impl Treedoc {
         }
     }
 
-    fn find_by_pos_id(&self, pid: PosID) -> Option<Box<Mininode>> {
+    fn get_by_pos_id(&self, pid: PosID) -> AtPosID {
         unimplemented!()
+    }
+
+    /*
+        When inserting between mini-siblings of a major node, a direct
+        descendant of the mini-node is created. Otherwise, a child
+        of a major node is created.
+    */
+    fn new_pos_id(&mut self, prev: &PosID, next: &PosID) -> PosID {
+        if prev.0.len() < next.0.len() && next.0.starts_with(&prev.0) {
+            let mut f_prev = next.clone();
+            f_prev.0.pop();
+            f_prev
+                .0
+                .push(PathComponent(0, Some(self.unique_disambiguator)));
+            return f_prev;
+        } else if next.0.len() < prev.0.len() && prev.0.starts_with(&next.0) {
+            let mut p_prev = prev.clone();
+            p_prev.0.pop();
+            p_prev
+                .0
+                .push(PathComponent(1, Some(self.unique_disambiguator)));
+            return p_prev;
+        } else if let Some(p) = prev.0.split_last() {
+            if let Some(f) = next.0.split_last() {
+                if p.1 == f.1 && p.0 != f.0 {
+                    let mut p_prev = prev.clone();
+                    p_prev
+                        .0
+                        .push(PathComponent(1, Some(self.unique_disambiguator)));
+                    return p_prev;
+                }
+            }
+        }
+        let mut p_prev = prev.clone();
+        p_prev.0.pop();
+        p_prev
+            .0
+            .push(PathComponent(1, Some(self.unique_disambiguator)));
+        return p_prev;
     }
 
     // Public facing
@@ -48,6 +91,7 @@ impl Treedoc {
     }
 
     // Public facing
+    // Check and write helpers for the deletion caveats (tombstones / active deletion, inheritance)
     fn delete(&mut self, pos: usize) -> Result<()> {
         Ok(())
     }
