@@ -4,13 +4,12 @@ While learning Rust.
 
 ### Some notes for myself
 
-- Last-writer-wins strat seems fine (simpler concurrency semantics).
+- All updates get replicated on each peer replica
 - Full state-based sync or a delta-state sync?
 - **Treedoc**, set CRDT
 - Commutative replicated data types -> a linear sequence of characters as _atoms_
 - Atoms have a PosID (with total order among others)
 - PosIDs through BTs
-- Happened-before order
 
 ### Resources:
 
