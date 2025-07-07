@@ -1,6 +1,6 @@
 # simple-text-crdt
 
-While learning Rust.
+While learning Rust; some implementation details and choices done with the help of Gemini 2.5.
 
 ### Some notes for myself
 
@@ -25,3 +25,7 @@ While learning Rust.
 ### More
 
 - https://crdt.tech/resources
+
+### TODOs
+
+- Add a .vscode for formatting (shorter max line length)

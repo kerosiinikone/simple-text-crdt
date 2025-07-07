@@ -1,4 +1,4 @@
-use std::cmp::Ordering;
+use std::{cmp::Ordering, usize};
 
 use crate::node::SDIS;
 
@@ -18,6 +18,24 @@ pub struct PathComponent(pub usize, pub Option<SDIS>);
 
 #[derive(Debug, Clone)]
 pub struct PosID(pub Vec<PathComponent>);
+
+impl PosID {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn new_empty_start() -> Self {
+        let mut pos = PosID::new();
+        pos.0.push(PathComponent(0, None));
+        pos
+    }
+
+    pub fn new_empty_end() -> Self {
+        let mut pos = PosID::new();
+        pos.0.push(PathComponent(usize::MAX, Some(u64::MAX)));
+        pos
+    }
+}
 
 impl PartialOrd for PathComponent {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
