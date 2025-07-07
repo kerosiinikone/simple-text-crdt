@@ -1,19 +1,18 @@
 use std::{cell::RefCell, rc::Rc};
 
 pub type Atom = char;
-pub type SDIS = u64;
 
-// Most common structure is as follows:
-// A node has one children, a mininode, that holds
-// an atom (a character) and has a determinable PosID (infix walk distance)
+// SDIS only on mininodes -> this is why PathComponents with
+// disambiguators are mininodes and ones without are major nodes
+pub type SDIS = u64;
 
 // Major node
 #[derive(Debug, Clone)]
 pub struct Node {
     /// Must be kept sorted
     pub children: RefCell<Vec<Rc<Mininode>>>,
-    pub left: Option<Box<Node>>,  // Rc<RefCell<Node>>
-    pub right: Option<Box<Node>>, // Rc<RefCell<Node>>
+    pub left: Option<Box<Node>>,  // Rc<RefCell<Node>>?
+    pub right: Option<Box<Node>>, // Rc<RefCell<Node>>?
 }
 
 #[derive(Debug, Clone)]

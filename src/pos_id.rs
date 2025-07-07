@@ -2,17 +2,6 @@ use std::{cmp::Ordering, usize};
 
 use crate::node::SDIS;
 
-// Keeping track of the SDIS on each "turn" also helps determining which mininode
-// under a major node has to be selected -> now the mininodes don't have to have
-// internal turns inside a major node
-
-/*
-    Paths (PosIDs) include a disambiguator only when necessary, i.e., (i) at the last element of the path; or (ii) whenever
-    the path follows a child of a mini-node explicitly. A path
-    element without a disambiguator refers to the children of
-    the corresponding major node.
-*/
-
 #[derive(Debug, PartialEq, Clone)]
 pub struct PathComponent(pub usize, pub Option<SDIS>);
 

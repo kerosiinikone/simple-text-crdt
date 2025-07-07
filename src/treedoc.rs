@@ -5,11 +5,21 @@ use crate::{
     pos_id::{PathComponent, PosID},
 };
 
-// Could also be implemented as a buffer on Treedoc?
+// Could also be implemented as a buffer on Treedoc??
 // -> depends on the sync strat later
 struct InsertSignal {
     atom: Atom,
     pos_id: PosID,
+}
+
+struct DeleteSignal {
+    pos_id: PosID,
+}
+
+// -> for applying locally and syncing
+pub enum Signal {
+    Insert(InsertSignal),
+    Delete(DeleteSignal),
 }
 
 // This is the document that is copied to all the peers
@@ -18,20 +28,20 @@ struct InsertSignal {
 pub struct Treedoc {
     pub root: Option<Box<Node>>,
     pub unique_disambiguator: SDIS,
-    // Inc/dec on apply
+    // Inc/dec on apply -> O(1)
     pub doc_length: usize,
 }
 
 impl Treedoc {
     // Public facing
-    // Check and write helpers for the deletion caveats (tombstones / active deletion, inheritance)
-    pub fn delete(&mut self, pos: usize) -> Result<()> {
-        Ok(())
+    pub fn delete(&mut self, pos: usize) -> Result<DeleteSignal> {
+        Ok(DeleteSignal {
+            pos_id: Treedoc::find_path_at_index(&self.root, pos, &mut 0, &mut PosID::new())
+                .unwrap_or_else(PosID::new_empty_end),
+        })
     }
     // Public facing
     pub fn insert(&mut self, pos: usize, ch: char) -> Result<InsertSignal> {
-        // Somehow get the prev and next PosID from deisred _pos_
-        // -> traverse and "build" a path until pos - 1 and pos + 1 (add left and right and diambig., etc)
         let mut prev_pos_id = PosID::new();
         let mut next_pos_id = PosID::new();
 
@@ -47,19 +57,18 @@ impl Treedoc {
             Treedoc::find_path_at_index(&self.root, pos, &mut 0, &mut next_pos_id)
                 .unwrap_or_else(PosID::new_empty_end)
         };
-        // Get the *new* PosID
         let new_pos_id = self.new_pos_id(&prev, &next);
-        // Return the operation signal with the PosID and Atom; Insert??
+
         Ok(InsertSignal {
             atom: ch,
             pos_id: new_pos_id,
         })
     }
     /*
-        A major node is ordered by infix-order
+       "A major node is ordered by infix-order
         walk: the major node’s left child is before any mini-node;
         mini-nodes are ordered by disambiguator; and mini-nodes
-        are before the major node’s right child.
+        are before the major node’s right child."
     */
     pub fn traverse_in_and_collect(node: &Option<Box<Node>>, vec: &mut Vec<Mininode>) {
         if let Some(node) = node {
@@ -78,9 +87,9 @@ impl Treedoc {
         }
     }
     /*
-        When inserting between mini-siblings of a major node, a direct
+        "When inserting between mini-siblings of a major node, a direct
         descendant of the mini-node is created. Otherwise, a child
-        of a major node is created.
+        of a major node is created."
     */
     fn new_pos_id(&mut self, prev: &PosID, next: &PosID) -> PosID {
         if prev.0.len() < next.0.len() && next.0.starts_with(&prev.0) {
