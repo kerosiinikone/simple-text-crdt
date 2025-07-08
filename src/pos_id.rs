@@ -2,6 +2,9 @@ use std::{cmp::Ordering, usize};
 
 use crate::node::SDIS;
 
+// PathComponent(1, None) -> to major on the right
+// PathComponent(0, None) -> to major on the left
+// PathComponent(0, Some(dis)) -> to mini (disticnt step)
 #[derive(Debug, PartialEq, Clone)]
 pub struct PathComponent(pub usize, pub Option<SDIS>);
 
