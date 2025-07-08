@@ -11,8 +11,8 @@ pub type SDIS = u64;
 pub struct Node {
     /// Must be kept sorted
     pub children: RefCell<Vec<Rc<Mininode>>>,
-    pub left: Option<Box<Node>>,  // Rc<RefCell<Node>>?
-    pub right: Option<Box<Node>>, // Rc<RefCell<Node>>?
+    pub left: Option<Rc<RefCell<Node>>>,
+    pub right: Option<Rc<RefCell<Node>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -21,6 +21,23 @@ pub struct Mininode {
     pub atom: Atom,
     pub tombstone: bool,
 
-    pub left: Option<Box<Node>>,
-    pub right: Option<Box<Node>>,
+    pub left: Option<Rc<RefCell<Node>>>,
+    pub right: Option<Rc<RefCell<Node>>>,
+}
+
+impl Node {
+    pub fn new_with_mini(atom: Atom, dis: SDIS) -> Self {
+        let mini = Rc::new(Mininode {
+            atom: atom,
+            disambiguator: dis,
+            left: None,
+            right: None,
+            tombstone: false,
+        });
+        Self {
+            children: RefCell::new(vec![mini]),
+            left: None,
+            right: None,
+        }
+    }
 }
