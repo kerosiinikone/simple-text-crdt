@@ -4,7 +4,7 @@ use crate::node::SDIS;
 
 // PathComponent(1, None) -> to major on the right
 // PathComponent(0, None) -> to major on the left
-// PathComponent(0, Some(dis)) -> to mini (disticnt step)
+// PathComponent(0, Some(dis)) -> to mini (distinct step)
 #[derive(Debug, PartialEq, Clone)]
 pub struct PathComponent(pub usize, pub Option<SDIS>);
 
@@ -16,15 +16,9 @@ impl PosID {
         Self(Vec::new())
     }
 
-    pub fn new_empty_start() -> Self {
-        let mut pos = PosID::new();
-        pos.0.push(PathComponent(0, None));
-        pos
-    }
-
     pub fn new_empty_end() -> Self {
         let mut pos = PosID::new();
-        pos.0.push(PathComponent(usize::MAX, Some(u64::MAX)));
+        pos.0.push(PathComponent(usize::MAX, None));
         pos
     }
 }

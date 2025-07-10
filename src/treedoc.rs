@@ -43,6 +43,7 @@ pub struct Treedoc {
 }
 
 impl Treedoc {
+    // Concurrency later: push a child node, do not assign
     pub fn apply(&mut self, sig: Signal) -> Result<()> {
         match sig {
             Signal::Insert(op) => {
@@ -118,8 +119,7 @@ impl Treedoc {
 
     pub fn delete(&mut self, pos: usize) -> Result<DeleteSignal> {
         Ok(DeleteSignal {
-            pos_id: Self::find_path_at_index(&self.root, pos, &mut 0, &mut PosID::new())
-                .unwrap_or_else(PosID::new_empty_end),
+            pos_id: Self::find_path_at_index(&self.root, pos, &mut 0, &mut PosID::new()).unwrap(),
             unique_disambiguator: self.unique_disambiguator,
         })
     }
@@ -128,8 +128,12 @@ impl Treedoc {
         let mut prev_pos_id = PosID::new();
         let mut next_pos_id = PosID::new();
 
+        if pos > self.doc_length {
+            return Err(Error::from(std::io::ErrorKind::InvalidInput));
+        }
+
         let prev = if pos == 0 {
-            PosID::new_empty_start()
+            PosID::new() // Start-of-doc?
         } else {
             Self::find_path_at_index(&self.root, pos - 1, &mut 0, &mut prev_pos_id)
                 .unwrap_or_else(PosID::new_empty_end)
@@ -140,7 +144,12 @@ impl Treedoc {
             Self::find_path_at_index(&self.root, pos, &mut 0, &mut next_pos_id)
                 .unwrap_or_else(PosID::new_empty_end)
         };
+
+        println!("Prev: {:?}, Next: {:?}", prev, next);
+
         let new_pos_id = self.new_pos_id(&prev, &next);
+
+        println!("New: {:?}", new_pos_id);
 
         Ok(InsertSignal {
             atom: ch,
@@ -170,11 +179,11 @@ impl Treedoc {
             Self::traverse_in_and_collect(&node.borrow().right, vec);
         }
     }
-    /*
-    "When inserting between mini-siblings of a major node, a direct
-    descendant of the mini-node is created. Otherwise, a child
-    of a major node is created."
-    */
+
+    // 'c' at 3
+    // Prev: PosID([PathComponent(0, Some(1))]), Next: PosID([PathComponent(18446744073709551615, None)])
+    // New: PosID([PathComponent(0, Some(1)), PathComponent(1, None)])
+
     fn new_pos_id(&mut self, prev: &PosID, next: &PosID) -> PosID {
         if prev.0.len() < next.0.len() && next.0.starts_with(&prev.0) {
             let mut f_prev = next.clone();
@@ -189,17 +198,38 @@ impl Treedoc {
         } else if let Some(p) = prev.0.split_last() {
             if let Some(f) = next.0.split_last() {
                 // Minisiblings
-                if p.1 == f.1 && p.0 != f.0 {
+                if p.1 == f.1 && p.0 != f.0 && !p.1.is_empty() {
                     let mut p_prev = prev.clone();
-                    p_prev.0.push(PathComponent(1, None));
+                    p_prev
+                        .0
+                        .push(PathComponent(0, Some(self.unique_disambiguator)));
                     return p_prev;
                 }
             }
         }
+        // Helper function from this
         let mut p_prev = prev.clone();
-        p_prev.0.pop();
+        while let Some(last_component) = p_prev.0.last() {
+            if last_component.1.is_some() {
+                p_prev.0.pop();
+            } else {
+                break;
+            }
+        }
+        let mut p_next = next.clone();
+        while let Some(last_component) = p_next.0.last() {
+            if last_component.1.is_some() {
+                p_next.0.pop();
+            } else {
+                break;
+            }
+        }
         p_prev.0.push(PathComponent(1, None));
-        return p_prev;
+        if p_prev.0 < p_next.0 {
+            return p_prev;
+        }
+        p_next.0.push(PathComponent(0, None));
+        return p_next;
     }
 
     fn traverse_node_at_pos_id(node: AtPosition, curr_pos_id: &Vec<PathComponent>) -> AtPosition {
@@ -251,6 +281,7 @@ impl Treedoc {
         curr_index: &mut usize,
         curr_path: &mut PosID,
     ) -> Option<PosID> {
+        // println!("Node: {:?}, Path: {:?}", node, curr_path);
         if let Some(node) = node {
             curr_path.0.push(PathComponent(0, None));
             match Self::find_path_at_index(&node.borrow().left, target_index, curr_index, curr_path)
@@ -283,14 +314,14 @@ impl Treedoc {
                         curr_path
                             .0
                             .push(PathComponent(0, Some(mininode.borrow().disambiguator)));
-                        return Some(curr_path.to_owned());
+                        return Some(curr_path.clone());
                     }
                     *curr_index += 1;
                 }
                 curr_path
                     .0
-                    .push(PathComponent(0, Some(mininode.borrow().disambiguator))); // Current mini
-                curr_path.0.push(PathComponent(1, None)); // Turn to major
+                    .push(PathComponent(0, Some(mininode.borrow().disambiguator)));
+                curr_path.0.push(PathComponent(1, None));
                 match Self::find_path_at_index(
                     &mininode.borrow().right,
                     target_index,
