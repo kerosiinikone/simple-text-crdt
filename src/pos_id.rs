@@ -4,7 +4,7 @@ use crate::node::SDIS;
 
 // PathComponent(1, None) -> to major on the right
 // PathComponent(0, None) -> to major on the left
-// PathComponent(0, Some(dis)) -> to mini (distinct step)
+// PathComponent(0, Some(dis)) -> get the mininode from within (distinct step)
 #[derive(Debug, PartialEq, Clone)]
 pub struct PathComponent(pub usize, pub Option<SDIS>);
 
@@ -17,9 +17,21 @@ impl PosID {
     }
 
     pub fn new_empty_end() -> Self {
-        let mut pos = PosID::new();
+        let mut pos = Self::new();
         pos.0.push(PathComponent(usize::MAX, None));
         pos
+    }
+
+    pub fn strip_to_major(&self) -> Self {
+        let mut temp = self.clone();
+        while let Some(last_component) = temp.0.last() {
+            if last_component.1.is_some() {
+                temp.0.pop();
+            } else {
+                break;
+            }
+        }
+        temp
     }
 }
 

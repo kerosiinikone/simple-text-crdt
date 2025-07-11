@@ -7,7 +7,7 @@ mod pos_id;
 mod treedoc;
 
 fn main() -> Result<(), Error> {
-    let root = Node::new_with_mini('c', 1u64);
+    let root = Node::new_with_mini('f', 1u64);
 
     let mut td: treedoc::Treedoc = treedoc::Treedoc {
         root: Some(Rc::new(RefCell::new(root))),
@@ -15,19 +15,19 @@ fn main() -> Result<(), Error> {
         unique_disambiguator: 1u64,
     };
 
+    let sig = td.insert(0, 'e')?;
+    td.apply(treedoc::Signal::Insert(sig))?;
+
+    let sig = td.insert(0, 'd')?;
+    td.apply(treedoc::Signal::Insert(sig))?;
+
+    let sig = td.insert(3, 'c')?;
+    td.apply(treedoc::Signal::Insert(sig))?;
+
     let sig = td.insert(0, 'b')?;
     td.apply(treedoc::Signal::Insert(sig))?;
 
     let sig = td.insert(0, 'a')?;
-    td.apply(treedoc::Signal::Insert(sig))?;
-
-    let sig = td.insert(3, 'e')?;
-    td.apply(treedoc::Signal::Insert(sig))?;
-
-    let sig = td.insert(3, 'd')?;
-    td.apply(treedoc::Signal::Insert(sig))?;
-
-    let sig = td.insert(5, 'f')?;
     td.apply(treedoc::Signal::Insert(sig))?;
 
     let mut nodes = Vec::new();

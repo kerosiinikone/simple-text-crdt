@@ -1,5 +1,6 @@
 use std::{
     cell::RefCell,
+    collections::VecDeque,
     io::{Error, Result},
     rc::Rc,
     usize,
@@ -9,6 +10,10 @@ use crate::{
     node::{AtPosition, Atom, Mininode, Node, SDIS},
     pos_id::{PathComponent, PosID},
 };
+
+struct TreedocIter {
+    paths: VecDeque<PosID>,
+}
 
 // Could also be implemented as a buffer on Treedoc??
 // -> depends on the sync strat later
@@ -25,21 +30,24 @@ pub struct DeleteSignal {
     unique_disambiguator: SDIS,
 }
 
-// -> for applying locally and syncing
 #[derive(Debug)]
 pub enum Signal {
     Insert(InsertSignal),
     Delete(DeleteSignal),
 }
 
-// This is the document that is copied to all the peers
-// -> aka the document state / atom buffer
 #[derive(Debug)]
 pub struct Treedoc {
     pub root: Option<Rc<RefCell<Node>>>,
     pub unique_disambiguator: SDIS,
-    // Inc/dec on apply -> O(1)
     pub doc_length: usize,
+}
+
+impl Iterator for TreedocIter {
+    type Item = PosID;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.paths.pop_front()
+    }
 }
 
 impl Treedoc {
@@ -50,62 +58,42 @@ impl Treedoc {
                 if let Some((last, rest)) = op.pos_id.0.split_last() {
                     let vd: Vec<PathComponent> = rest.iter().cloned().collect();
                     match Self::traverse_node_at_pos_id(AtPosition::Major(self.root.clone()), &vd) {
-                        AtPosition::Major(parent_node) => {
-                            match (last.0, last.1) {
-                                (_, Some(dis)) => {
-                                    let parent_mut = parent_node.clone().unwrap();
-                                    parent_mut.borrow().children.borrow_mut().push(Rc::new(
-                                        RefCell::new(Mininode {
-                                            atom: op.atom,
-                                            disambiguator: dis,
-                                            left: None,
-                                            right: None,
-                                            tombstone: false,
-                                        }),
-                                    ));
-                                    parent_mut
-                                        .borrow()
-                                        .children
-                                        .borrow_mut()
-                                        .sort_by_key(|m| m.borrow().disambiguator);
-                                }
-                                (0, None) => {
-                                    let new_node =
-                                        Node::new_with_mini(op.atom, op.unique_disambiguator);
-                                    parent_node.unwrap().borrow_mut().left =
-                                        Some(Rc::new(RefCell::new(new_node)))
-                                }
-                                (1, None) => {
-                                    let new_node =
-                                        Node::new_with_mini(op.atom, op.unique_disambiguator);
-                                    parent_node.unwrap().borrow_mut().right =
-                                        Some(Rc::new(RefCell::new(new_node)))
-                                }
-                                _ => {
-                                    unimplemented!() // Shouldn't happen
-                                }
+                        AtPosition::Major(parent_node) => match (last.0, last.1) {
+                            (_, Some(dis)) => {
+                                parent_node
+                                    .unwrap()
+                                    .borrow_mut()
+                                    .add_mini(Mininode::new_with_atom(op.atom, dis));
                             }
-                        }
-                        AtPosition::Mini(parent_node) => {
-                            match (last.0, last.1) {
-                                (0, None) => {
-                                    let parent_mut = parent_node.clone().unwrap();
-                                    let new_node =
-                                        Node::new_with_mini(op.atom, op.unique_disambiguator);
-                                    parent_mut.borrow_mut().left =
-                                        Some(Rc::new(RefCell::new(new_node)))
-                                }
-                                (1, None) => {
-                                    let new_node =
-                                        Node::new_with_mini(op.atom, op.unique_disambiguator);
-                                    parent_node.unwrap().borrow_mut().right =
-                                        Some(Rc::new(RefCell::new(new_node)))
-                                }
-                                _ => {
-                                    unimplemented!() // Shouldn't happen
-                                }
+                            (0, None) => {
+                                let new_node =
+                                    Node::new_with_mini(op.atom, op.unique_disambiguator);
+                                parent_node.unwrap().borrow_mut().add_left(new_node);
                             }
-                        }
+                            (1, None) => {
+                                let new_node =
+                                    Node::new_with_mini(op.atom, op.unique_disambiguator);
+                                parent_node.unwrap().borrow_mut().add_right(new_node);
+                            }
+                            _ => {
+                                unreachable!()
+                            }
+                        },
+                        AtPosition::Mini(parent_node) => match (last.0, last.1) {
+                            (0, None) => {
+                                let new_node =
+                                    Node::new_with_mini(op.atom, op.unique_disambiguator);
+                                parent_node.unwrap().borrow_mut().add_left(new_node);
+                            }
+                            (1, None) => {
+                                let new_node =
+                                    Node::new_with_mini(op.atom, op.unique_disambiguator);
+                                parent_node.unwrap().borrow_mut().add_right(new_node);
+                            }
+                            _ => {
+                                unreachable!()
+                            }
+                        },
                     }
                     self.doc_length += 1;
                     return Ok(());
@@ -117,45 +105,41 @@ impl Treedoc {
         }
     }
 
-    pub fn delete(&mut self, pos: usize) -> Result<DeleteSignal> {
+    // Pos-Index meaning?
+    pub fn delete(&self, pos: usize) -> Result<DeleteSignal> {
         Ok(DeleteSignal {
-            pos_id: Self::find_path_at_index(&self.root, pos, &mut 0, &mut PosID::new()).unwrap(),
+            pos_id: self.find_path_to_char(pos).unwrap_or(PosID::new()),
             unique_disambiguator: self.unique_disambiguator,
         })
     }
 
     pub fn insert(&mut self, pos: usize, ch: char) -> Result<InsertSignal> {
-        let mut prev_pos_id = PosID::new();
-        let mut next_pos_id = PosID::new();
-
         if pos > self.doc_length {
             return Err(Error::from(std::io::ErrorKind::InvalidInput));
         }
-
         let prev = if pos == 0 {
-            PosID::new() // Start-of-doc?
+            PosID::new()
         } else {
-            Self::find_path_at_index(&self.root, pos - 1, &mut 0, &mut prev_pos_id)
+            self.find_path_to_char(pos - 1)
                 .unwrap_or_else(PosID::new_empty_end)
         };
         let next = if pos == self.doc_length {
             PosID::new_empty_end()
         } else {
-            Self::find_path_at_index(&self.root, pos, &mut 0, &mut next_pos_id)
+            self.find_path_to_char(pos)
                 .unwrap_or_else(PosID::new_empty_end)
         };
-
-        println!("Prev: {:?}, Next: {:?}", prev, next);
-
         let new_pos_id = self.new_pos_id(&prev, &next);
-
-        println!("New: {:?}", new_pos_id);
 
         Ok(InsertSignal {
             atom: ch,
             pos_id: new_pos_id,
             unique_disambiguator: self.unique_disambiguator,
         })
+    }
+
+    fn find_path_to_char(&self, target_index: usize) -> Option<PosID> {
+        self.iter().nth(target_index)
     }
     /*
     "A major node is ordered by infix-order
@@ -207,27 +191,13 @@ impl Treedoc {
                 }
             }
         }
-        // Helper function from this
-        let mut p_prev = prev.clone();
-        while let Some(last_component) = p_prev.0.last() {
-            if last_component.1.is_some() {
-                p_prev.0.pop();
-            } else {
-                break;
-            }
-        }
-        let mut p_next = next.clone();
-        while let Some(last_component) = p_next.0.last() {
-            if last_component.1.is_some() {
-                p_next.0.pop();
-            } else {
-                break;
-            }
-        }
+        let mut p_prev = prev.strip_to_major();
+        let mut p_next = next.strip_to_major();
         p_prev.0.push(PathComponent(1, None));
         if p_prev.0 < p_next.0 {
             return p_prev;
         }
+        drop(p_prev);
         p_next.0.push(PathComponent(0, None));
         return p_next;
     }
@@ -256,7 +226,7 @@ impl Treedoc {
                                     .cloned(),
                             );
                         }
-                        _ => unimplemented!(),
+                        _ => unreachable!(), // Impossible
                     };
                 }
                 AtPosition::Mini(mini) => {
@@ -267,7 +237,7 @@ impl Treedoc {
                         (1, None) => {
                             ref_point = AtPosition::Major(mini.unwrap().borrow().right.clone())
                         }
-                        _ => unimplemented!(), // Impossible
+                        _ => unreachable!(), // Impossible
                     };
                 }
             }
@@ -275,79 +245,50 @@ impl Treedoc {
         ref_point
     }
 
-    fn find_path_at_index(
-        node: &Option<Rc<RefCell<Node>>>,
-        target_index: usize,
-        curr_index: &mut usize,
-        curr_path: &mut PosID,
-    ) -> Option<PosID> {
-        // println!("Node: {:?}, Path: {:?}", node, curr_path);
-        if let Some(node) = node {
-            curr_path.0.push(PathComponent(0, None));
-            match Self::find_path_at_index(&node.borrow().left, target_index, curr_index, curr_path)
-            {
-                Some(path) => return Some(path),
-                None => {
-                    curr_path.0.pop();
-                }
-            }
-            for mininode in node.borrow().children.borrow().iter() {
-                curr_path
-                    .0
-                    .push(PathComponent(0, Some(mininode.borrow().disambiguator)));
+    fn iter(&self) -> TreedocIter {
+        let mut iterated_vec: VecDeque<PosID> = VecDeque::new();
+
+        fn iterate_pos_id(
+            node: &Option<Rc<RefCell<Node>>>,
+            curr_path: &mut PosID,
+            iterated_vec: &mut VecDeque<PosID>,
+        ) {
+            if let Some(node) = node {
                 curr_path.0.push(PathComponent(0, None));
-                match Self::find_path_at_index(
-                    &mininode.borrow().left,
-                    target_index,
-                    curr_index,
-                    curr_path,
-                ) {
-                    Some(path) => return Some(path),
-                    None => {
-                        curr_path.0.pop();
-                        curr_path.0.pop();
-                    }
-                }
-                // To the mininode itself -> PathComponent(0, Some(dis))
-                if !mininode.borrow().tombstone {
-                    if *curr_index == target_index {
-                        curr_path
+                iterate_pos_id(&node.borrow().left, curr_path, iterated_vec);
+                curr_path.0.pop();
+                for mininode in node.borrow().children.borrow().iter() {
+                    curr_path
+                        .0
+                        .push(PathComponent(0, Some(mininode.borrow().disambiguator)));
+                    curr_path.0.push(PathComponent(0, None));
+                    iterate_pos_id(&mininode.borrow().left, curr_path, iterated_vec);
+                    curr_path.0.pop();
+                    curr_path.0.pop();
+                    if !mininode.borrow().tombstone {
+                        let mut final_path = curr_path.clone();
+                        final_path
                             .0
                             .push(PathComponent(0, Some(mininode.borrow().disambiguator)));
-                        return Some(curr_path.clone());
+                        iterated_vec.push_back(final_path);
                     }
-                    *curr_index += 1;
-                }
-                curr_path
-                    .0
-                    .push(PathComponent(0, Some(mininode.borrow().disambiguator)));
-                curr_path.0.push(PathComponent(1, None));
-                match Self::find_path_at_index(
-                    &mininode.borrow().right,
-                    target_index,
-                    curr_index,
-                    curr_path,
-                ) {
-                    Some(path) => return Some(path),
-                    None => {
-                        curr_path.0.pop();
-                        curr_path.0.pop();
-                    }
-                }
-            }
-            curr_path.0.push(PathComponent(1, None));
-            match Self::find_path_at_index(
-                &node.borrow().right,
-                target_index,
-                curr_index,
-                curr_path,
-            ) {
-                Some(path) => return Some(path),
-                None => {
+                    curr_path
+                        .0
+                        .push(PathComponent(0, Some(mininode.borrow().disambiguator)));
+                    curr_path.0.push(PathComponent(1, None));
+                    iterate_pos_id(&mininode.borrow().right, curr_path, iterated_vec);
+                    curr_path.0.pop();
                     curr_path.0.pop();
                 }
+                curr_path.0.push(PathComponent(1, None));
+                iterate_pos_id(&node.borrow().right, curr_path, iterated_vec);
+                curr_path.0.pop();
             }
         }
-        None
+
+        iterate_pos_id(&self.root, &mut PosID::new(), &mut iterated_vec);
+        TreedocIter {
+            paths: iterated_vec,
+        }
     }
 }

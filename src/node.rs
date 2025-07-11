@@ -6,6 +6,13 @@ pub type Atom = char;
 // disambiguators are mininodes and ones without are major nodes
 pub type SDIS = u64;
 
+// // TODO: USED FOR REFACTORING THE AtPosition!
+// pub trait TreeNode {
+//     fn add_left(&mut self, node: Node);
+//     fn add_right(&mut self, node: Node);
+//     fn add_mini(&self, mini: Mininode);
+// }
+
 // Major node
 #[derive(Debug, Clone)]
 pub struct Node {
@@ -39,6 +46,7 @@ impl Node {
             right: None,
         }
     }
+
     pub fn new_with_mini(atom: Atom, dis: SDIS) -> Self {
         let mini = Rc::new(RefCell::new(Mininode {
             atom: atom,
@@ -53,4 +61,41 @@ impl Node {
             right: None,
         }
     }
+
+    pub fn add_mini(&self, mini: Mininode) {
+        self.children.borrow_mut().push(Rc::new(RefCell::new(mini)));
+        self.children
+            .borrow_mut()
+            .sort_by_key(|m| m.borrow().disambiguator);
+    }
+
+    pub fn add_left(&mut self, node: Node) {
+        self.left = Some(Rc::new(RefCell::new(node)))
+    }
+
+    pub fn add_right(&mut self, node: Node) {
+        self.right = Some(Rc::new(RefCell::new(node)))
+    }
+}
+
+impl Mininode {
+    pub fn new_with_atom(atom: Atom, dis: SDIS) -> Self {
+        Mininode {
+            atom: atom,
+            disambiguator: dis,
+            left: None,
+            right: None,
+            tombstone: false,
+        }
+    }
+
+    pub fn add_left(&mut self, node: Node) {
+        self.left = Some(Rc::new(RefCell::new(node)))
+    }
+
+    pub fn add_right(&mut self, node: Node) {
+        self.right = Some(Rc::new(RefCell::new(node)))
+    }
+
+    pub fn add_mini(&self, mini: Mininode) {}
 }
