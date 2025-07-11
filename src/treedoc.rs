@@ -98,7 +98,6 @@ impl Treedoc {
                     self.doc_length += 1;
                     return Ok(());
                 }
-                // pos_id epmty?
                 Err(Error::from(std::io::ErrorKind::InvalidData))
             }
             Signal::Delete(_) => Ok(()),
@@ -150,9 +149,6 @@ impl Treedoc {
     pub fn traverse_in_and_collect(node: &Option<Rc<RefCell<Node>>>, vec: &mut Vec<Atom>) {
         if let Some(node) = node {
             Self::traverse_in_and_collect(&node.borrow().left, vec);
-            // Order mininodes by their disambiguators
-            // Keep a sorted list vs. sort here? -> assume the children are sorted (u64)
-            // Check the children and if they have left or/and right subtrees
             for mininode in node.borrow().children.borrow().iter() {
                 Self::traverse_in_and_collect(&mininode.borrow().left, vec);
                 if !mininode.borrow().tombstone {
@@ -163,10 +159,6 @@ impl Treedoc {
             Self::traverse_in_and_collect(&node.borrow().right, vec);
         }
     }
-
-    // 'c' at 3
-    // Prev: PosID([PathComponent(0, Some(1))]), Next: PosID([PathComponent(18446744073709551615, None)])
-    // New: PosID([PathComponent(0, Some(1)), PathComponent(1, None)])
 
     fn new_pos_id(&mut self, prev: &PosID, next: &PosID) -> PosID {
         if prev.0.len() < next.0.len() && next.0.starts_with(&prev.0) {
@@ -226,7 +218,7 @@ impl Treedoc {
                                     .cloned(),
                             );
                         }
-                        _ => unreachable!(), // Impossible
+                        _ => unreachable!(),
                     };
                 }
                 AtPosition::Mini(mini) => {
@@ -237,7 +229,7 @@ impl Treedoc {
                         (1, None) => {
                             ref_point = AtPosition::Major(mini.unwrap().borrow().right.clone())
                         }
-                        _ => unreachable!(), // Impossible
+                        _ => unreachable!(),
                     };
                 }
             }

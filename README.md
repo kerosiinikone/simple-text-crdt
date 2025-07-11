@@ -1,6 +1,6 @@
 # simple-text-crdt
 
-While learning Rust; some implementation details and choices done with the help of Gemini 2.5.
+While learning Rust; some implementation choices and paper logic translation done with the help of Gemini 2.5.
 
 ### Some notes for myself
 
