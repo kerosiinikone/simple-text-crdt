@@ -30,6 +30,9 @@ fn main() -> Result<(), Error> {
     let sig = td.insert(0, 'a')?;
     td.apply(treedoc::Signal::Insert(sig))?;
 
+    let sig = td.delete(1)?;
+    td.apply(treedoc::Signal::Delete(sig))?;
+
     let mut nodes = Vec::new();
     treedoc::Treedoc::traverse_in_and_collect(&td.root, &mut nodes);
     println!("{:?}", nodes);

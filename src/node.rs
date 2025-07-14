@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, io::Error, rc::Rc};
 
 pub type Atom = char;
 
@@ -6,7 +6,6 @@ pub type Atom = char;
 // disambiguators are mininodes and ones without are major nodes
 pub type SDIS = u64;
 
-// // TODO: USED FOR REFACTORING THE AtPosition!
 // pub trait TreeNode {
 //     fn add_left(&mut self, node: Node);
 //     fn add_right(&mut self, node: Node);
@@ -67,6 +66,14 @@ impl Node {
         self.children
             .borrow_mut()
             .sort_by_key(|m| m.borrow().disambiguator);
+    }
+
+    // Refactor
+    pub fn remove_mini(&self, dis: Option<SDIS>) -> Result<(), Error> {
+        self.children
+            .borrow_mut()
+            .retain(|mn| mn.borrow().disambiguator != dis.unwrap());
+        Ok(())
     }
 
     pub fn add_left(&mut self, node: Node) {

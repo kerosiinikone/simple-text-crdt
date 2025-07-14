@@ -100,7 +100,29 @@ impl Treedoc {
                 }
                 Err(Error::from(std::io::ErrorKind::InvalidData))
             }
-            Signal::Delete(_) => Ok(()),
+            Signal::Delete(op) => {
+                if let AtPosition::Mini(Some(node)) = Self::traverse_node_at_pos_id(
+                    AtPosition::Major(self.root.clone()),
+                    &op.pos_id.0,
+                ) {
+                    let mut node_mut = node.borrow_mut();
+                    if node_mut.left.is_some() || node_mut.right.is_some() {
+                        node_mut.tombstone = true;
+                        return Ok(());
+                    }
+                }
+                if let Some((last, rest)) = op.pos_id.0.split_last() {
+                    let vd: Vec<PathComponent> = rest.iter().cloned().collect();
+                    if let AtPosition::Major(Some(node)) =
+                        Self::traverse_node_at_pos_id(AtPosition::Major(self.root.clone()), &vd)
+                    {
+                        let node_mut = node.borrow_mut();
+                        node_mut.remove_mini(last.1)?;
+                        return Ok(());
+                    }
+                }
+                return Err(Error::from(std::io::ErrorKind::InvalidInput));
+            }
         }
     }
 
