@@ -1,5 +1,6 @@
 use std::{
     cell::RefCell,
+    cmp::max,
     collections::VecDeque,
     io::{Error, Result},
     rc::Rc,
@@ -108,6 +109,7 @@ impl Treedoc {
                     let mut node_mut = node.borrow_mut();
                     if node_mut.left.is_some() || node_mut.right.is_some() {
                         node_mut.tombstone = true;
+                        self.doc_length -= 1;
                         return Ok(());
                     }
                 }
@@ -118,6 +120,7 @@ impl Treedoc {
                     {
                         let node_mut = node.borrow_mut();
                         node_mut.remove_mini(last.1)?;
+                        self.doc_length -= 1;
                         return Ok(());
                     }
                 }
@@ -126,8 +129,15 @@ impl Treedoc {
         }
     }
 
-    // Pos-Index meaning?
+    // Refactor
     pub fn delete(&self, pos: usize) -> Result<DeleteSignal> {
+        let pos = if pos == 0 {
+            pos
+        } else if pos > self.doc_length {
+            self.doc_length - 1
+        } else {
+            pos - 1
+        };
         Ok(DeleteSignal {
             pos_id: self.find_path_to_char(pos).unwrap_or(PosID::new()),
             unique_disambiguator: self.unique_disambiguator,
@@ -304,5 +314,108 @@ impl Treedoc {
         TreedocIter {
             paths: iterated_vec,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn init_treedoc(ch: char) -> Treedoc {
+        let root = Node::new_with_mini(ch, 1u64);
+        Treedoc {
+            root: Some(Rc::new(RefCell::new(root))),
+            doc_length: 1,
+            unique_disambiguator: 1u64,
+        }
+    }
+
+    #[test]
+    fn test_insert_start() {
+        let corr_string = "abc";
+        let mut td = init_treedoc('c');
+
+        let sig = td.insert(0, 'b');
+        let res = td.apply(Signal::Insert(sig.unwrap()));
+        assert!(res.is_ok());
+
+        let sig = td.insert(0, 'a');
+        let res = td.apply(Signal::Insert(sig.unwrap()));
+        assert!(res.is_ok());
+
+        let mut nodes = Vec::new();
+        Treedoc::traverse_in_and_collect(&td.root, &mut nodes);
+        let res_string: String = nodes.iter().collect();
+        assert_eq!(res_string, corr_string)
+    }
+
+    #[test]
+    fn test_insert_end() {
+        let corr_string = "abc";
+        let mut td = init_treedoc('a');
+
+        let sig = td.insert(td.doc_length, 'b');
+        let res = td.apply(Signal::Insert(sig.unwrap()));
+        assert!(res.is_ok());
+
+        let sig = td.insert(td.doc_length, 'c');
+        let res = td.apply(Signal::Insert(sig.unwrap()));
+        assert!(res.is_ok());
+
+        let mut nodes = Vec::new();
+        Treedoc::traverse_in_and_collect(&td.root, &mut nodes);
+        let res_string: String = nodes.iter().collect();
+        assert_eq!(res_string, corr_string)
+    }
+
+    #[test]
+    fn test_insert_between() {
+        let corr_string = "abc";
+        let mut td = init_treedoc('a');
+
+        let sig = td.insert(td.doc_length, 'c');
+        let res = td.apply(Signal::Insert(sig.unwrap()));
+        assert!(res.is_ok());
+
+        let sig = td.insert(1, 'b');
+        let res = td.apply(Signal::Insert(sig.unwrap()));
+        assert!(res.is_ok());
+
+        let mut nodes = Vec::new();
+        Treedoc::traverse_in_and_collect(&td.root, &mut nodes);
+        let res_string: String = nodes.iter().collect();
+        assert_eq!(res_string, corr_string)
+    }
+
+    #[test]
+    fn test_delete() {
+        let corr_string = "ab";
+        let mut td = init_treedoc('a');
+
+        let sig = td.insert(td.doc_length, 'c');
+        let res = td.apply(Signal::Insert(sig.unwrap()));
+        assert!(res.is_ok());
+
+        let sig = td.insert(1, 'b');
+        let res = td.apply(Signal::Insert(sig.unwrap()));
+        assert!(res.is_ok());
+
+        let sig = td.delete(td.doc_length);
+        let res = td.apply(Signal::Delete(sig.unwrap()));
+        assert!(res.is_ok());
+
+        let mut nodes = Vec::new();
+        Treedoc::traverse_in_and_collect(&td.root, &mut nodes);
+        let res_string: String = nodes.iter().collect();
+        assert_eq!(res_string, corr_string);
+
+        let sig = td.delete(0);
+        let res = td.apply(Signal::Delete(sig.unwrap()));
+        assert!(res.is_ok());
+
+        let mut nodes = Vec::new();
+        Treedoc::traverse_in_and_collect(&td.root, &mut nodes);
+        let res_string: String = nodes.iter().collect();
+        assert_eq!(res_string, "b");
     }
 }

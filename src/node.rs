@@ -68,11 +68,14 @@ impl Node {
             .sort_by_key(|m| m.borrow().disambiguator);
     }
 
-    // Refactor
     pub fn remove_mini(&self, dis: Option<SDIS>) -> Result<(), Error> {
+        let init_len = self.children.borrow().len();
         self.children
             .borrow_mut()
             .retain(|mn| mn.borrow().disambiguator != dis.unwrap());
+        if self.children.borrow().len() == init_len {
+            return Err(Error::from(std::io::ErrorKind::NotFound));
+        }
         Ok(())
     }
 

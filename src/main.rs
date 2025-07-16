@@ -30,7 +30,7 @@ fn main() -> Result<(), Error> {
     let sig = td.insert(0, 'a')?;
     td.apply(treedoc::Signal::Insert(sig))?;
 
-    let sig = td.delete(1)?;
+    let sig = td.delete(td.doc_length)?;
     td.apply(treedoc::Signal::Delete(sig))?;
 
     let mut nodes = Vec::new();
@@ -39,5 +39,3 @@ fn main() -> Result<(), Error> {
 
     Ok(())
 }
-
-// a b c
