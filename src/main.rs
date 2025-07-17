@@ -1,6 +1,11 @@
 use simple_text_crdt::{node::Node, treedoc::Signal, treedoc::Treedoc};
 use std::{cell::RefCell, io::Error, rc::Rc};
 
+// To deal with on conc:
+// Simulate simultaneous insertions / deletions -> diff disambiq., same path
+// Interface for syncing ACTUAL concurrent use (simple server?)
+// ...
+
 fn main() -> Result<(), Error> {
     let root = Node::new_with_mini('f', 1u64);
 
