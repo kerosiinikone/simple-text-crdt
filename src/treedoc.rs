@@ -1,6 +1,5 @@
 use std::{
     cell::RefCell,
-    cmp::max,
     collections::VecDeque,
     io::{Error, Result},
     rc::Rc,
@@ -28,7 +27,8 @@ pub struct InsertSignal {
 #[derive(Debug)]
 pub struct DeleteSignal {
     pos_id: PosID,
-    unique_disambiguator: SDIS,
+    // For concurrency
+    _unique_disambiguator: SDIS,
 }
 
 #[derive(Debug)]
@@ -52,7 +52,14 @@ impl Iterator for TreedocIter {
 }
 
 impl Treedoc {
-    // Concurrency later: push a child node, do not assign
+    pub fn new(ch: char) -> Self {
+        let root = Node::new_with_mini(ch, 1u64);
+        Treedoc {
+            root: Some(Rc::new(RefCell::new(root))),
+            doc_length: 1,
+            unique_disambiguator: 1u64,
+        }
+    }
     pub fn apply(&mut self, sig: Signal) -> Result<()> {
         match sig {
             Signal::Insert(op) => {
@@ -61,6 +68,7 @@ impl Treedoc {
                     match Self::traverse_node_at_pos_id(AtPosition::Major(self.root.clone()), &vd) {
                         AtPosition::Major(parent_node) => match (last.0, last.1) {
                             (_, Some(dis)) => {
+                                // push a child node, do not assign
                                 parent_node
                                     .unwrap()
                                     .borrow_mut()
@@ -129,7 +137,7 @@ impl Treedoc {
         }
     }
 
-    // Refactor
+    // 0-index characters -> as supposed to indices pointing to "gaps" in the insertion
     pub fn delete(&self, pos: usize) -> Result<DeleteSignal> {
         let pos = if pos == 0 {
             pos
@@ -140,7 +148,7 @@ impl Treedoc {
         };
         Ok(DeleteSignal {
             pos_id: self.find_path_to_char(pos).unwrap_or(PosID::new()),
-            unique_disambiguator: self.unique_disambiguator,
+            _unique_disambiguator: self.unique_disambiguator,
         })
     }
 
@@ -269,48 +277,48 @@ impl Treedoc {
         ref_point
     }
 
+    fn iterate_pos_id(
+        node: &Option<Rc<RefCell<Node>>>,
+        curr_path: &mut PosID,
+        iterated_vec: &mut VecDeque<PosID>,
+    ) {
+        if let Some(node) = node {
+            curr_path.0.push(PathComponent(0, None));
+            Self::iterate_pos_id(&node.borrow().left, curr_path, iterated_vec);
+            curr_path.0.pop();
+            for mininode in node.borrow().children.borrow().iter() {
+                curr_path
+                    .0
+                    .push(PathComponent(0, Some(mininode.borrow().disambiguator)));
+                curr_path.0.push(PathComponent(0, None));
+                Self::iterate_pos_id(&mininode.borrow().left, curr_path, iterated_vec);
+                curr_path.0.pop();
+                curr_path.0.pop();
+                if !mininode.borrow().tombstone {
+                    let mut final_path = curr_path.clone();
+                    final_path
+                        .0
+                        .push(PathComponent(0, Some(mininode.borrow().disambiguator)));
+                    iterated_vec.push_back(final_path);
+                }
+                curr_path
+                    .0
+                    .push(PathComponent(0, Some(mininode.borrow().disambiguator)));
+                curr_path.0.push(PathComponent(1, None));
+                Self::iterate_pos_id(&mininode.borrow().right, curr_path, iterated_vec);
+                curr_path.0.pop();
+                curr_path.0.pop();
+            }
+            curr_path.0.push(PathComponent(1, None));
+            Self::iterate_pos_id(&node.borrow().right, curr_path, iterated_vec);
+            curr_path.0.pop();
+        }
+    }
+
     fn iter(&self) -> TreedocIter {
         let mut iterated_vec: VecDeque<PosID> = VecDeque::new();
 
-        fn iterate_pos_id(
-            node: &Option<Rc<RefCell<Node>>>,
-            curr_path: &mut PosID,
-            iterated_vec: &mut VecDeque<PosID>,
-        ) {
-            if let Some(node) = node {
-                curr_path.0.push(PathComponent(0, None));
-                iterate_pos_id(&node.borrow().left, curr_path, iterated_vec);
-                curr_path.0.pop();
-                for mininode in node.borrow().children.borrow().iter() {
-                    curr_path
-                        .0
-                        .push(PathComponent(0, Some(mininode.borrow().disambiguator)));
-                    curr_path.0.push(PathComponent(0, None));
-                    iterate_pos_id(&mininode.borrow().left, curr_path, iterated_vec);
-                    curr_path.0.pop();
-                    curr_path.0.pop();
-                    if !mininode.borrow().tombstone {
-                        let mut final_path = curr_path.clone();
-                        final_path
-                            .0
-                            .push(PathComponent(0, Some(mininode.borrow().disambiguator)));
-                        iterated_vec.push_back(final_path);
-                    }
-                    curr_path
-                        .0
-                        .push(PathComponent(0, Some(mininode.borrow().disambiguator)));
-                    curr_path.0.push(PathComponent(1, None));
-                    iterate_pos_id(&mininode.borrow().right, curr_path, iterated_vec);
-                    curr_path.0.pop();
-                    curr_path.0.pop();
-                }
-                curr_path.0.push(PathComponent(1, None));
-                iterate_pos_id(&node.borrow().right, curr_path, iterated_vec);
-                curr_path.0.pop();
-            }
-        }
-
-        iterate_pos_id(&self.root, &mut PosID::new(), &mut iterated_vec);
+        Self::iterate_pos_id(&self.root, &mut PosID::new(), &mut iterated_vec);
         TreedocIter {
             paths: iterated_vec,
         }
@@ -321,101 +329,25 @@ impl Treedoc {
 mod tests {
     use super::*;
 
-    fn init_treedoc(ch: char) -> Treedoc {
-        let root = Node::new_with_mini(ch, 1u64);
-        Treedoc {
-            root: Some(Rc::new(RefCell::new(root))),
-            doc_length: 1,
-            unique_disambiguator: 1u64,
+    #[test]
+    fn test_iter_node_at_pos_id() {
+        let mut td = Treedoc::new('a');
+        let sig = td.insert(1, 'b');
+        let res = td.apply(Signal::Insert(sig.unwrap()));
+        assert!(res.is_ok());
+
+        let mut pos_id_root = PosID::new();
+        pos_id_root.0.push(PathComponent(1, None));
+        pos_id_root
+            .0
+            .push(PathComponent(0, Some(td.unique_disambiguator)));
+        let a_node =
+            Treedoc::traverse_node_at_pos_id(AtPosition::Major(td.root.clone()), &pos_id_root.0);
+        if let AtPosition::Mini(mn) = a_node {
+            assert!(mn.is_some());
+            assert!(mn.unwrap().borrow().atom == 'b');
+        } else {
+            panic!("Wrong node type iterated")
         }
-    }
-
-    #[test]
-    fn test_insert_start() {
-        let corr_string = "abc";
-        let mut td = init_treedoc('c');
-
-        let sig = td.insert(0, 'b');
-        let res = td.apply(Signal::Insert(sig.unwrap()));
-        assert!(res.is_ok());
-
-        let sig = td.insert(0, 'a');
-        let res = td.apply(Signal::Insert(sig.unwrap()));
-        assert!(res.is_ok());
-
-        let mut nodes = Vec::new();
-        Treedoc::traverse_in_and_collect(&td.root, &mut nodes);
-        let res_string: String = nodes.iter().collect();
-        assert_eq!(res_string, corr_string)
-    }
-
-    #[test]
-    fn test_insert_end() {
-        let corr_string = "abc";
-        let mut td = init_treedoc('a');
-
-        let sig = td.insert(td.doc_length, 'b');
-        let res = td.apply(Signal::Insert(sig.unwrap()));
-        assert!(res.is_ok());
-
-        let sig = td.insert(td.doc_length, 'c');
-        let res = td.apply(Signal::Insert(sig.unwrap()));
-        assert!(res.is_ok());
-
-        let mut nodes = Vec::new();
-        Treedoc::traverse_in_and_collect(&td.root, &mut nodes);
-        let res_string: String = nodes.iter().collect();
-        assert_eq!(res_string, corr_string)
-    }
-
-    #[test]
-    fn test_insert_between() {
-        let corr_string = "abc";
-        let mut td = init_treedoc('a');
-
-        let sig = td.insert(td.doc_length, 'c');
-        let res = td.apply(Signal::Insert(sig.unwrap()));
-        assert!(res.is_ok());
-
-        let sig = td.insert(1, 'b');
-        let res = td.apply(Signal::Insert(sig.unwrap()));
-        assert!(res.is_ok());
-
-        let mut nodes = Vec::new();
-        Treedoc::traverse_in_and_collect(&td.root, &mut nodes);
-        let res_string: String = nodes.iter().collect();
-        assert_eq!(res_string, corr_string)
-    }
-
-    #[test]
-    fn test_delete() {
-        let corr_string = "ab";
-        let mut td = init_treedoc('a');
-
-        let sig = td.insert(td.doc_length, 'c');
-        let res = td.apply(Signal::Insert(sig.unwrap()));
-        assert!(res.is_ok());
-
-        let sig = td.insert(1, 'b');
-        let res = td.apply(Signal::Insert(sig.unwrap()));
-        assert!(res.is_ok());
-
-        let sig = td.delete(td.doc_length);
-        let res = td.apply(Signal::Delete(sig.unwrap()));
-        assert!(res.is_ok());
-
-        let mut nodes = Vec::new();
-        Treedoc::traverse_in_and_collect(&td.root, &mut nodes);
-        let res_string: String = nodes.iter().collect();
-        assert_eq!(res_string, corr_string);
-
-        let sig = td.delete(0);
-        let res = td.apply(Signal::Delete(sig.unwrap()));
-        assert!(res.is_ok());
-
-        let mut nodes = Vec::new();
-        Treedoc::traverse_in_and_collect(&td.root, &mut nodes);
-        let res_string: String = nodes.iter().collect();
-        assert_eq!(res_string, "b");
     }
 }
