@@ -7,7 +7,7 @@ use std::{cell::RefCell, io::Error, rc::Rc};
 // ...
 
 fn main() -> Result<(), Error> {
-    let root = Node::new_with_mini('f', 1u64);
+    let root = Node::new_with_mini('c', 1u64);
 
     let mut td = Treedoc {
         root: Some(Rc::new(RefCell::new(root))),
@@ -15,23 +15,11 @@ fn main() -> Result<(), Error> {
         unique_disambiguator: 1u64,
     };
 
-    let sig = td.insert(0, 'e')?;
-    td.apply(Signal::Insert(sig))?;
+    let sig_f = td.insert(0, 'a')?;
+    let sig_s = td.insert(0, 'b')?;
 
-    let sig = td.insert(0, 'd')?;
-    td.apply(Signal::Insert(sig))?;
-
-    let sig = td.insert(3, 'c')?;
-    td.apply(Signal::Insert(sig))?;
-
-    let sig = td.insert(0, 'b')?;
-    td.apply(Signal::Insert(sig))?;
-
-    let sig = td.insert(0, 'a')?;
-    td.apply(Signal::Insert(sig))?;
-
-    let sig = td.delete(td.doc_length)?;
-    td.apply(Signal::Delete(sig))?;
+    td.apply(Signal::Insert(sig_f))?;
+    td.apply(Signal::Insert(sig_s))?;
 
     let mut nodes = Vec::new();
     Treedoc::traverse_in_and_collect(&td.root, &mut nodes);

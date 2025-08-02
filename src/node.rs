@@ -63,9 +63,9 @@ impl Node {
 
     pub fn add_mini(&self, mini: Mininode) {
         self.children.borrow_mut().push(Rc::new(RefCell::new(mini)));
-        self.children
-            .borrow_mut()
-            .sort_by_key(|m| m.borrow().disambiguator);
+        // self.children
+        //     .borrow_mut()
+        //     .sort_by_key(|m| m.borrow().disambiguator);
     }
 
     pub fn remove_mini(&self, dis: Option<SDIS>) -> Result<(), Error> {
